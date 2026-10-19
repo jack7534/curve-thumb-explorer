@@ -12,7 +12,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
- [assembly: AssemblyVersion("1.1.0.0")]
+ [assembly: AssemblyVersion("1.2.0.0")]
 
 namespace CurveThumb
 {
@@ -35,7 +35,8 @@ namespace CurveThumb
     public sealed class ShellThumbnailProvider : IThumbnailProvider, IInitializeWithStream
     {
         private byte[] data;
-        private List<Tri> sampledTriangles;
+        private IStream binaryStlStream;
+        private uint binaryStlCount;
         private const int MaxFileBytes = 128 * 1024 * 1024;
         public void Initialize(IStream stream, STGM mode)
         {
@@ -57,9 +58,10 @@ namespace CurveThumb
                     {
                         uint declared = BitConverter.ToUInt32(header, 80);
                         long expected = 84L + (long)declared * 50;
-                        if (declared > 0 && expected > MaxFileBytes && (length < 0 || length == expected))
+                        if (declared > 0 && (length == expected || (length < 0 && expected > MaxFileBytes)))
                         {
-                            sampledTriangles = ModelReader.ReadBinarySampled(stream, declared, readPtr);
+                            binaryStlStream = stream;
+                            binaryStlCount = declared;
                             return;
                         }
                     }
@@ -83,14 +85,17 @@ namespace CurveThumb
         {
             phbmp = IntPtr.Zero;
             pdwAlpha = WTS_ALPHATYPE.WTSAT_RGB;
-            if ((data == null || data.Length == 0) && (sampledTriangles == null || sampledTriangles.Count == 0)) throw new COMException("Model stream is empty", unchecked((int)0x80004005));
+            if ((data == null || data.Length == 0) && binaryStlStream == null) throw new COMException("Model stream is empty", unchecked((int)0x80004005));
             uint requested = Math.Max(32u, Math.Min(1024u, cx));
             int size = (int)requested;
-            List<Tri> triangles;
-            string badge;
-            try { if (sampledTriangles != null) { triangles = sampledTriangles; badge = "STL"; } else triangles = ModelReader.Read(data, out badge); }
+            Bitmap rendered;
+            try
+            {
+                if (binaryStlStream != null) rendered = StlRasterizer.Render(binaryStlStream, binaryStlCount, size);
+                else { string badge; List<Tri> triangles = ModelReader.Read(data, out badge); rendered = MeshRenderer.Render(triangles, size, badge); }
+            }
             catch { throw new COMException("Unsupported or invalid 3D mesh", unchecked((int)0x80004005)); }
-            using (Bitmap bitmap = MeshRenderer.Render(triangles, size, badge))
+            using (Bitmap bitmap = rendered)
             {
                 phbmp = bitmap.GetHbitmap(Color.FromArgb(0, 0, 0));
                 pdwAlpha = WTS_ALPHATYPE.WTSAT_RGB;
@@ -200,7 +205,7 @@ namespace CurveThumb
             for(int i=0;i<n;i++)foreach(V3 v in new V3[]{source[i].A,source[i].B,source[i].C}){min[0]=Math.Min(min[0],v.X);min[1]=Math.Min(min[1],v.Y);min[2]=Math.Min(min[2],v.Z);max[0]=Math.Max(max[0],v.X);max[1]=Math.Max(max[1],v.Y);max[2]=Math.Max(max[2],v.Z);}
             double cx=(min[0]+max[0])/2,cy=(min[1]+max[1])/2,cz=(min[2]+max[2])/2,span=Math.Max(max[0]-min[0],Math.Max(max[1]-min[1],max[2]-min[2]));if(span<1e-12)span=1;
             float scale=(float)(size*.68/span);List<Face> faces=new List<Face>(n);V3 light=new V3(-.4,-.5,1);double ll=light.Length;
-            for(int i=0;i<n;i++){Tri t=source[i];V3 normal=V3.Cross(t.B-t.A,t.C-t.A);double len=normal.Length;if(len<1e-12)continue;normal=new V3(normal.X/len,normal.Y/len,normal.Z/len);double shade=.38+.62*Math.Abs((normal.X*light.X+normal.Y*light.Y+normal.Z*light.Z)/ll);PointF a=Project(t.A,cx,cy,cz,scale,size),b=Project(t.B,cx,cy,cz,scale,size),c=Project(t.C,cx,cy,cz,scale,size);faces.Add(new Face(a,b,c,(t.A.Z+t.B.Z+t.C.Z)/3,shade));}
+            for(int i=0;i<n;i++){Tri t=source[i];V3 normal=V3.Cross(t.B-t.A,t.C-t.A);double len=normal.Length;if(len<1e-12)continue;normal=new V3(normal.X/len,normal.Y/len,normal.Z/len);double shade=.38+.62*Math.Abs((normal.X*light.X+normal.Y*light.Y+normal.Z*light.Z)/ll);PointF a=Project(t.A,cx,cy,cz,scale,size),b=Project(t.B,cx,cy,cz,scale,size),c=Project(t.C,cx,cy,cz,scale,size);double depth=(-(t.A.X+t.A.Y+t.B.X+t.B.Y+t.C.X+t.C.Y)+(t.A.Z+t.B.Z+t.C.Z))/3;faces.Add(new Face(a,b,c,depth,shade));}
             faces.Sort((a,b)=>a.Depth.CompareTo(b.Depth));Bitmap bmp=new Bitmap(size,size,PixelFormat.Format32bppArgb);using(Graphics g=Graphics.FromImage(bmp)){g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(Color.FromArgb(255,36,40,48));using(Brush floor=new SolidBrush(Color.FromArgb(255,29,32,39)))g.FillEllipse(floor,size*.18f,size*.75f,size*.64f,size*.13f);foreach(Face f in faces){int val=(int)(155+100*f.Shade);using(Brush br=new SolidBrush(Color.FromArgb(255,Math.Min(255,val),Math.Min(255,(int)(val*.72)),Math.Min(255,(int)(val*.48)))))g.FillPolygon(br,new PointF[]{f.A,f.B,f.C});}using(Font font=new Font("Segoe UI",Math.Max(8,size*.075f),FontStyle.Bold,GraphicsUnit.Pixel)){SizeF m=g.MeasureString(badge,font);RectangleF box=new RectangleF(size-m.Width-size*.11f,size-m.Height-size*.1f,m.Width+size*.06f,m.Height+size*.045f);using(Brush bg=new SolidBrush(BadgeColor(badge)))g.FillRoundedRectangle(bg,box,size*.025f);using(Brush fg=new SolidBrush(Color.FromArgb(255,33,25,18)))g.DrawString(badge,font,fg,box.X+size*.03f,box.Y+size*.005f);}}
             return bmp;
         }
@@ -229,3 +234,4 @@ namespace CurveThumb
         public static void FillRoundedRectangle(this Graphics g,Brush b,RectangleF r,float radius){using(GraphicsPath p=new GraphicsPath()){float d=radius*2;p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();g.FillPath(b,p);}}
     }
 }
+

@@ -10,9 +10,10 @@ New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
 $source = Join-Path $buildDir 'CurveThumbProvider.cs'
 $output = Join-Path $buildDir 'CurveThumb.Provider.dll'
 Copy-Item -LiteralPath (Join-Path $root 'src\CurveThumbProvider.cs') -Destination $source -Force
+$rasterSource = Join-Path $root 'src\StlRasterizer.cs'
 $compilerLine = '/nologo /target:library /platform:x64 /optimize+ /out:"' + $output + '" ' +
     '/reference:System.Drawing.dll /reference:System.IO.Compression.dll ' +
-    '/reference:System.Xml.Linq.dll "' + $source + '"'
+    '/reference:System.Xml.Linq.dll "' + $source + '" "' + $rasterSource + '"'
 $process = Start-Process -FilePath $compiler -ArgumentList $compilerLine -Wait -PassThru -NoNewWindow
 if ($process.ExitCode -ne 0) { throw "Compilation failed with exit code $($process.ExitCode)." }
 Copy-Item -LiteralPath $output -Destination (Join-Path $outDir 'CurveThumb.Provider.dll') -Force
@@ -37,3 +38,4 @@ $checksums = @(
 )
 Set-Content -LiteralPath (Join-Path $outDir 'SHA256SUMS.txt') -Value $checksums -Encoding ascii
 Write-Host "Build complete: $package"
+

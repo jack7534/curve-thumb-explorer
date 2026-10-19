@@ -18,7 +18,7 @@ The built-in thumbnail provider currently supports binary and ASCII STL, OBJ, 3M
 
 ## Install in three steps
 
-1. **Download:** [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.1.0/CurveThumb.Setup.exe) from the [v1.1.0 release](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.1.0). The ZIP package is also available there for offline sharing.
+1. **Download:** [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.2.0/CurveThumb.Setup.exe) from the [v1.2.0 release](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.2.0). The ZIP package is also available there for offline sharing.
 2. **Install:** Double-click the EXE and approve the Windows administrator prompt. Wait for the “CurveThumb Explorer is installed” message.
 3. **View:** Close and reopen File Explorer. Open a folder with models and choose **View → Large icons** or **Extra large icons**.
 
@@ -34,8 +34,8 @@ Windows SmartScreen may show an unknown publisher notice for a new free and open
 
 - Confirm you selected **Large icons** or **Extra large icons**, then reopen the folder.
 - For cloud-only files, choose **Available offline** so Windows can read the model data.
-- If Windows kept an old blank thumbnail, clear **Thumbnails** using Windows Disk Cleanup and reopen File Explorer.
-- Binary STL files larger than 128 MiB use a sampled thumbnail. Other supported formats must be at most 128 MiB.
+- Re-run the latest installer to refresh old thumbnails. Setup clears Windows' thumbnail cache once and reopens File Explorer; the first visit to a folder may take longer while previews rebuild.
+- Binary STL files up to roughly 5 million triangles render every face. Larger STL files use a bounded preview with nearby gaps filled for a faster, more continuous thumbnail. Other supported formats must be at most 128 MiB.
 
 ## Uninstall
 
@@ -47,7 +47,7 @@ Open **Windows Settings → Apps → Installed apps**, find **CurveThumb Explore
 - Setup registers the thumbnail handler for this computer. The default app associated with `.stl`, `.obj`, and other model files is not changed.
 - Requires 64-bit Windows and administrator approval during installation. Thumbnail rendering runs in Windows' isolated Shell process.
 - Only the formats listed above are registered. Unsupported formats remain under Windows or other installed thumbnail providers.
-- Large models can take longer to preview. Windows caches thumbnails; clear the Windows thumbnail cache if a changed model still shows an older preview.
+- Large models can take longer to preview. Windows keeps thumbnails in its shared cache, rather than creating a separate image file beside each model. Setup clears the old cache on installation or upgrade. To refresh it later, run the installed `CurveThumb.Setup.*.exe /refresh-cache` as administrator. This refreshes thumbnails for all file types in the current Windows account; previews rebuild as folders are opened.
 
 ## Build from source
 
@@ -56,3 +56,4 @@ Run `build.ps1` on Windows with the .NET Framework 4.x compiler available. The s
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
+

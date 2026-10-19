@@ -1,8 +1,11 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -11,11 +14,15 @@ internal static class CurveThumbSetup
     private const string Clsid = "{7D4E4693-E78B-4D59-AAC7-6B7B2B2B8F10}";
     private const string ThumbShell = "{E357FCCD-A995-4576-B01F-234630154E96}";
     private const string ProgId = "CurveThumb.ShellThumbnailProvider";
-    private const string Version = "1.1.0.0";
+    private const string Version = "1.2.0.0";
     private static readonly string[] Extensions = { ".stl", ".obj", ".3mf", ".ply", ".fbx" };
 
     [DllImport("shell32.dll")]
     private static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool MoveFileEx(string existing, string replacement, int flags);
 
     [STAThread]
     private static int Main(string[] args)
@@ -26,15 +33,28 @@ internal static class CurveThumbSetup
             if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
                 throw new InvalidOperationException("Administrator approval is required to register the thumbnail provider for Windows Explorer.");
             bool uninstall = args.Length > 0 && string.Equals(args[0], "/uninstall", StringComparison.OrdinalIgnoreCase);
-            if (uninstall) Uninstall(); else Install();
-            SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero);
-            MessageBox.Show(uninstall ? "CurveThumb Explorer was removed." :
-                "CurveThumb Explorer is installed. Reopen File Explorer and choose Large icons. Cloud-only files must be downloaded first.",
-                "CurveThumb Explorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            bool refresh = args.Length > 0 && string.Equals(args[0], "/refresh-cache", StringComparison.OrdinalIgnoreCase);
+            bool quiet = Array.Exists(args, arg => string.Equals(arg, "/quiet", StringComparison.OrdinalIgnoreCase));
+            string activeDll = null;
+            string activeSetup = null;
+            if (uninstall) Uninstall();
+            else if (!refresh) Install(out activeDll, out activeSetup);
+            // Wait for the association notification before deleting the old
+            // thumbnail databases. Windows will build new entries on demand.
+            SHChangeNotify(0x08000000, 0x1000, IntPtr.Zero, IntPtr.Zero);
+            int removed = RefreshThumbnailCache();
+            if (!uninstall && !refresh) CleanupOldInstallFiles(activeDll, activeSetup);
+            if (!quiet)
+                MessageBox.Show(uninstall ? "CurveThumb Explorer was removed." : refresh ?
+                    "The Windows thumbnail cache was refreshed. Reopen your model folder." :
+                    "CurveThumb Explorer is installed. The old thumbnail cache was refreshed (" + removed + " cache files). Reopen your model folder and choose Large icons. Cloud-only files must be downloaded first.",
+                    "CurveThumb Explorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
         catch (Exception ex)
         {
+            try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "CurveThumb-setup-error.txt"), ex.ToString()); }
+            catch { }
             MessageBox.Show(ex.Message, "CurveThumb Explorer setup failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
@@ -44,19 +64,32 @@ internal static class CurveThumbSetup
     private static RegistryKey User { get { return RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64); } }
     private static string InstallDirectory { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "CurveThumb Explorer"); } }
 
-    private static void Install()
+    private static void Install(out string activeDll, out string activeSetup)
     {
         string directory = InstallDirectory;
         Directory.CreateDirectory(directory);
-        string dll = Path.Combine(directory, "CurveThumb.Provider.dll");
+        byte[] bundled;
         using (Stream input = Assembly.GetExecutingAssembly().GetManifestResourceStream("CurveThumb.Provider.dll"))
         {
             if (input == null) throw new InvalidOperationException("The bundled thumbnail component is missing.");
-            using (FileStream output = new FileStream(dll, FileMode.Create, FileAccess.Write)) input.CopyTo(output);
+            using (MemoryStream output = new MemoryStream()) { input.CopyTo(output); bundled = output.ToArray(); }
         }
-        string setup = Path.Combine(directory, "CurveThumb.Setup.exe");
+        string suffix;
+        using (SHA256 sha = SHA256.Create()) suffix = BitConverter.ToString(sha.ComputeHash(bundled)).Replace("-", "").Substring(0, 12);
+        // A loaded Shell DLL cannot be overwritten. Each build gets a stable,
+        // content-addressed path so upgrades do not depend on Explorer exiting.
+        string dll = Path.Combine(directory, "CurveThumb.Provider." + suffix + ".dll");
+        if (!File.Exists(dll)) File.WriteAllBytes(dll, bundled);
+        string setup = Path.Combine(directory, "CurveThumb.Setup." + suffix + ".exe");
         if (!string.Equals(Path.GetFullPath(Application.ExecutablePath), Path.GetFullPath(setup), StringComparison.OrdinalIgnoreCase))
-            File.Copy(Application.ExecutablePath, setup, true);
+        {
+            try { File.Copy(Application.ExecutablePath, setup, true); }
+            catch (IOException)
+            {
+                setup = Path.Combine(directory, "CurveThumb.Setup." + suffix + "." + Guid.NewGuid().ToString("N") + ".exe");
+                File.Copy(Application.ExecutablePath, setup, false);
+            }
+        }
 
         using (RegistryKey machine = Machine)
         {
@@ -97,7 +130,7 @@ internal static class CurveThumbSetup
             using (RegistryKey key = machine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CurveThumbExplorer"))
             {
                 key.SetValue("DisplayName", "CurveThumb Explorer");
-                key.SetValue("DisplayVersion", "1.1.0");
+                key.SetValue("DisplayVersion", "1.2.0");
                 key.SetValue("Publisher", "CurveThumb Explorer");
                 key.SetValue("InstallLocation", directory);
                 key.SetValue("UninstallString", "\"" + setup + "\" /uninstall");
@@ -117,6 +150,68 @@ internal static class CurveThumbSetup
             }
             user.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\" + Clsid, false);
             user.DeleteSubKeyTree(@"SOFTWARE\Classes\" + ProgId, false);
+        }
+        activeDll = dll;
+        activeSetup = setup;
+    }
+
+    private static int RefreshThumbnailCache()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string cacheDir = Path.GetFullPath(Path.Combine(local, @"Microsoft\Windows\Explorer"));
+        // Never enumerate or remove files outside this exact Windows cache folder.
+        if (!Directory.Exists(cacheDir)) return 0;
+        int currentSession = Process.GetCurrentProcess().SessionId;
+        bool stoppedExplorer = false;
+        foreach (Process process in Process.GetProcessesByName("explorer"))
+        {
+            using (process)
+            {
+                if (process.SessionId != currentSession) continue;
+                try { process.Kill(); process.WaitForExit(5000); stoppedExplorer = true; }
+                catch { }
+            }
+        }
+        int removed = 0;
+        try
+        {
+            foreach (string file in Directory.GetFiles(cacheDir, "thumbcache_*.db", SearchOption.TopDirectoryOnly))
+            {
+                // A fixed prefix and extension exclude model files and user data.
+                try
+                {
+                    for (int attempt = 0; attempt < 3; attempt++)
+                    {
+                        try { File.Delete(file); removed++; break; }
+                        catch (IOException) { Thread.Sleep(250); }
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+        finally
+        {
+            if (stoppedExplorer)
+            {
+                try { Process.Start("explorer.exe"); }
+                catch { }
+            }
+        }
+        return removed;
+    }
+
+    private static void CleanupOldInstallFiles(string activeDll, string activeSetup)
+    {
+        if (!Directory.Exists(InstallDirectory)) return;
+        foreach (string pattern in new[] { "CurveThumb.Provider*.dll", "CurveThumb.Setup*.exe" })
+        foreach (string file in Directory.GetFiles(InstallDirectory, pattern, SearchOption.TopDirectoryOnly))
+        {
+            if (string.Equals(file, activeDll, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(file, activeSetup, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(file, Application.ExecutablePath, StringComparison.OrdinalIgnoreCase)) continue;
+            try { File.Delete(file); }
+            catch (IOException) { MoveFileEx(file, null, 0x4); }
+            catch (UnauthorizedAccessException) { }
         }
     }
 
@@ -148,7 +243,11 @@ internal static class CurveThumbSetup
             machine.DeleteSubKeyTree(@"SOFTWARE\CurveThumb\PreviousHandlers", false);
             machine.DeleteSubKeyTree(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CurveThumbExplorer", false);
         }
-        string dll = Path.Combine(InstallDirectory, "CurveThumb.Provider.dll");
-        if (File.Exists(dll)) File.Delete(dll);
+        // Shell may still hold a provider loaded before uninstallation. The
+        // registration is gone immediately; locked binaries can be reclaimed
+        // after Explorer releases them.
+        foreach (string dll in Directory.GetFiles(InstallDirectory, "CurveThumb.Provider.*.dll"))
+            try { File.Delete(dll); } catch (IOException) { }
     }
 }
+
