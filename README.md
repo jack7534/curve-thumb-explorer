@@ -4,21 +4,38 @@
 
 <img src="assets/logo.png" alt="CurveThumb Explorer logo" width="160">
 
-[View the visual overview and before/after gallery](OVERVIEW.md).
+## See it in File Explorer
+
+The 3D shape appears in the folder itself, with a colored file format badge. Double-clicking a model still opens your usual default app.
+
+![Before and after: 3D thumbnails in Windows File Explorer](docs/slide-2.png)
+
+[See the full illustrated overview](OVERVIEW.md).
 
 ## Supported formats
 
 The built-in thumbnail provider currently supports binary and ASCII STL, OBJ, 3MF, ASCII PLY, and ASCII FBX. Binary FBX, binary PLY, GLB/glTF, STEP/STP, and IGES/IGS are not supported yet. File Explorer will continue to show its regular icon or another installed thumbnail provider for unsupported files. STEP and IGES surface models require a dedicated CAD geometry engine for reliable tessellation.
 
-## Install
+## Install in three steps
 
-1. Download `CurveThumb.Setup.exe` from **Releases** and double-click it. The ZIP package is also available for offline sharing.
-2. Approve the Windows administrator prompt. This registers the thumbnail provider for File Explorer.
-3. Close and reopen File Explorer. Choose **View → Large icons** or **Extra large icons**.
+1. **Download:** [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.1.0/CurveThumb.Setup.exe) from the [v1.1.0 release](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.1.0). The ZIP package is also available there for offline sharing.
+2. **Install:** Double-click the EXE and approve the Windows administrator prompt. Wait for the “CurveThumb Explorer is installed” message.
+3. **View:** Close and reopen File Explorer. Open a folder with models and choose **View → Large icons** or **Extra large icons**.
+
+![Illustrated installation guide: download, install, and view thumbnails](docs/install-guide.svg)
+
+No separate viewer needs to stay open. To check the installation, use the included `Sample-Tetrahedron.stl` from the ZIP.
 
 For cloud files that show a cloud icon, download the model locally or choose **Available offline** before expecting a preview. Windows cannot render a thumbnail while the model data is only online.
 
 Windows SmartScreen may show an unknown publisher notice for a new free and open-source utility. Download only from this project's GitHub Releases page and verify the published SHA-256 checksum.
+
+### If the icons are still blank
+
+- Confirm you selected **Large icons** or **Extra large icons**, then reopen the folder.
+- For cloud-only files, choose **Available offline** so Windows can read the model data.
+- If Windows kept an old blank thumbnail, clear **Thumbnails** using Windows Disk Cleanup and reopen File Explorer.
+- Binary STL files larger than 128 MiB use a sampled thumbnail. Other supported formats must be at most 128 MiB.
 
 ## Uninstall
 

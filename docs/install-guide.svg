@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" role="img" aria-labelledby="title desc">
+  <title id="title">Install CurveThumb Explorer in three illustrated steps</title>
+  <desc id="desc">Download the setup EXE, approve the administrator prompt, then reopen File Explorer in Large icons view.</desc>
+  <rect width="1200" height="380" rx="28" fill="#20242b"/>
+  <path d="M0 28a28 28 0 0 1 28-28h8v380h-8a28 28 0 0 1-28-28z" fill="#ff8b32"/>
+  <text x="72" y="53" fill="#ffae55" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="700">GET STARTED IN 3 STEPS</text>
+  <text x="72" y="94" fill="#ffffff" font-family="Segoe UI,Arial,sans-serif" font-size="32" font-weight="700">Install and see your 3D models in folders</text>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <rect x="70" y="122" width="317" height="208" rx="22" fill="#2b3038" stroke="#414953" stroke-width="2"/>
+    <circle cx="228" cy="190" r="48" fill="#353c45"/>
+    <path d="M228 158v49m-17-17 17 17 17-17M199 221h58" fill="none" stroke="#ff9739" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="228" y="270" text-anchor="middle" fill="#fff" font-size="22" font-weight="700">1  Download</text>
+    <text x="228" y="300" text-anchor="middle" fill="#bfc7d0" font-size="17">CurveThumb.Setup.exe</text>
+    <path d="M401 225h25m-10-10 10 10-10 10" fill="none" stroke="#ff9739" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="442" y="122" width="317" height="208" rx="22" fill="#2b3038" stroke="#414953" stroke-width="2"/>
+    <circle cx="600" cy="190" r="48" fill="#353c45"/>
+    <path d="M600 155 631 168v25c0 23-15 37-31 46-16-9-31-23-31-46v-25z" fill="none" stroke="#ff9739" stroke-width="7" stroke-linejoin="round"/>
+    <path d="m583 192 12 12 23-27" fill="none" stroke="#22b14c" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="600" y="270" text-anchor="middle" fill="#fff" font-size="22" font-weight="700">2  Install</text>
+    <text x="600" y="300" text-anchor="middle" fill="#bfc7d0" font-size="17">Approve the Windows prompt</text>
+    <path d="M773 225h25m-10-10 10 10-10 10" fill="none" stroke="#ff9739" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="814" y="122" width="317" height="208" rx="22" fill="#2b3038" stroke="#414953" stroke-width="2"/>
+    <circle cx="973" cy="190" r="48" fill="#353c45"/>
+    <path d="M939 173h27l8 9h34v31h-69z" fill="none" stroke="#ff9739" stroke-width="7" stroke-linejoin="round"/>
+    <path d="m956 198 13-10 13 10-13 10z" fill="#22b14c"/>
+    <text x="973" y="270" text-anchor="middle" fill="#fff" font-size="22" font-weight="700">3  View thumbnails</text>
+    <text x="973" y="300" text-anchor="middle" fill="#bfc7d0" font-size="17">Reopen Explorer · Large icons</text>
+  </g>
+</svg>
