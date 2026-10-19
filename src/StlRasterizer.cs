@@ -8,29 +8,37 @@ using System.Runtime.InteropServices.ComTypes;
 
 namespace CurveThumb
 {
-    // Renders STL into a fixed-size depth buffer. Keeping only pixels in memory
-    // prevents large ZBrush exports from allocating millions of triangle objects.
+    // Fast STL thumbnail renderer. Small meshes render every face; larger meshes
+    // use a bounded spatial sample so Explorer work does not scale with file size.
     internal static class StlRasterizer
     {
         private const int BatchTriangles = 4096;
-        // Dense ZBrush parts can exceed a gigabyte. Sampled faces make otherwise
-        // continuous surfaces porous, so rasterize every face through 30M triangles.
-        private const uint FullSurfaceLimit = 30000000;
-        private const int BoundsBlocks = 1024;
-        private const int PreviewBlocks = 4096;
-        private const int PreviewBlockTriangles = 512;
+        private const uint FullSurfaceLimit = 250000;
+        private const int BoundsBlocks = 192;
+        private const int PreviewBlocks = 768;
+        private const int PreviewBlockTriangles = 128;
 
         public static Bitmap Render(IStream stream, uint count, int size)
         {
             if (count == 0) throw new InvalidDataException("Empty STL");
+
             bool approximate = count > FullSurfaceLimit;
             Bounds bounds = new Bounds();
             Visit(stream, count, approximate, BoundsBlocks, delegate(Tri tri) { bounds.Add(tri); });
             if (!bounds.Valid) throw new InvalidDataException("STL has no finite geometry");
-            int resolution = Math.Min(512, Math.Max(128, size * 2));
-            Canvas canvas = new Canvas(resolution, bounds);
+
+            // Explorer usually asks for 96-256 px thumbnails. Oversampling 2x is
+            // useful for small meshes, but wasteful on huge ZBrush exports.
+            int oversample = approximate
+                ? Math.Min(320, Math.Max(128, (int)Math.Ceiling(size * 1.25)))
+                : Math.Min(512, Math.Max(128, size * 2));
+
+            Canvas canvas = new Canvas(oversample, bounds);
             Visit(stream, count, approximate, PreviewBlocks, delegate(Tri tri) { canvas.Draw(tri); });
-            if (approximate) canvas.FillSmallGaps(5);
+
+            // Bounded sampling can leave tiny pinholes. Fill only local holes so
+            // separated parts are not accidentally welded together.
+            if (approximate) canvas.FillSmallGaps(7);
             return canvas.Finish(size);
         }
 
@@ -49,18 +57,21 @@ namespace CurveThumb
                         if (ReadFully(stream, block, n * 50, pointer) != n * 50) throw new EndOfStreamException();
                         for (int i = 0; i < n; i++) visitor(ReadTriangle(block, i * 50));
                     }
+                    return;
                 }
-                else
+
+                long availableBlocks = (long)Math.Ceiling(count / (double)PreviewBlockTriangles);
+                long blockCount = Math.Min(previewBlocks, availableBlocks);
+
+                for (long b = 0; b < blockCount; b++)
                 {
-                    long blockCount = Math.Min(previewBlocks, (long)Math.Ceiling(count / (double)PreviewBlockTriangles));
-                    for (long b = 0; b < blockCount; b++)
-                    {
-                        long index = blockCount == 1 ? 0 : b * (count - PreviewBlockTriangles) / (blockCount - 1);
-                        int n = (int)Math.Min(PreviewBlockTriangles, count - index);
-                        stream.Seek(84 + index * 50, 0, IntPtr.Zero);
-                        if (ReadFully(stream, block, n * 50, pointer) != n * 50) throw new EndOfStreamException();
-                        for (int i = 0; i < n; i++) visitor(ReadTriangle(block, i * 50));
-                    }
+                    long maxStart = Math.Max(0L, (long)count - PreviewBlockTriangles);
+                    long index = blockCount <= 1 ? 0 : b * maxStart / (blockCount - 1);
+                    int n = (int)Math.Min((long)PreviewBlockTriangles, (long)count - index);
+
+                    stream.Seek(84 + index * 50, 0, IntPtr.Zero);
+                    if (ReadFully(stream, block, n * 50, pointer) != n * 50) throw new EndOfStreamException();
+                    for (int i = 0; i < n; i++) visitor(ReadTriangle(block, i * 50));
                 }
             }
             finally { Marshal.FreeHGlobal(pointer); }
@@ -127,6 +138,7 @@ namespace CurveThumb
                 color = new int[size * size];
                 depth = new double[size * size];
                 for (int i = 0; i < color.Length; i++) { color[i] = background; depth[i] = Double.NegativeInfinity; }
+
                 for (int y = (int)(size * .75); y < (int)(size * .88); y++)
                     for (int x = (int)(size * .18); x < (int)(size * .82); x++)
                     {
@@ -148,13 +160,16 @@ namespace CurveThumb
             {
                 Point a = Project(tri.A), b = Project(tri.B), c = Project(tri.C);
                 if (!a.Valid || !b.Valid || !c.Valid) return;
+
                 V3 normal = V3.Cross(tri.B - tri.A, tri.C - tri.A);
                 double length = normal.Length;
                 if (length <= 1e-15) return;
+
                 double dot = Math.Abs((-normal.X * .4 - normal.Y * .5 + normal.Z) / (length * 1.187434));
                 double shade = .38 + .62 * Math.Min(1, dot);
                 int red = Math.Min(255, (int)(155 + 100 * shade));
                 int argb = Color.FromArgb(255, red, Math.Min(255, (int)(red * .72)), Math.Min(255, (int)(red * .48))).ToArgb();
+
                 double denominator = (b.Y - c.Y) * (a.X - c.X) + (c.X - b.X) * (a.Y - c.Y);
                 if (Math.Abs(denominator) < .35)
                 {
@@ -163,10 +178,12 @@ namespace CurveThumb
                         (a.Z + b.Z + c.Z) / 3, argb);
                     return;
                 }
+
                 int left = Math.Max(0, (int)Math.Floor(Math.Min(a.X, Math.Min(b.X, c.X))));
                 int right = Math.Min(size - 1, (int)Math.Ceiling(Math.Max(a.X, Math.Max(b.X, c.X))));
                 int top = Math.Max(0, (int)Math.Floor(Math.Min(a.Y, Math.Min(b.Y, c.Y))));
                 int bottom = Math.Min(size - 1, (int)Math.Ceiling(Math.Max(a.Y, Math.Max(b.Y, c.Y))));
+
                 for (int y = top; y <= bottom; y++)
                     for (int x = left; x <= right; x++)
                     {
@@ -185,17 +202,17 @@ namespace CurveThumb
                 if (z > depth[index]) { depth[index] = z; color[index] = argb; }
             }
 
-            // Very large models are represented by a bounded number of spatial
-            // blocks. Only nearby gaps are filled; widely separated parts stay apart.
             internal void FillSmallGaps(int radius)
             {
                 int[] original = (int[])color.Clone();
                 double[] originalDepth = (double[])depth.Clone();
+
                 for (int y = radius; y < size - radius; y++)
                     for (int x = radius; x < size - radius; x++)
                     {
                         int index = y * size + x;
                         if (!Double.IsNegativeInfinity(originalDepth[index])) continue;
+
                         int neighbors = 0, chosen = -1, bestDistance = Int32.MaxValue;
                         for (int dy = -radius; dy <= radius; dy++)
                             for (int dx = -radius; dx <= radius; dx++)
@@ -207,7 +224,8 @@ namespace CurveThumb
                                 neighbors++;
                                 if (distance < bestDistance) { bestDistance = distance; chosen = neighbor; }
                             }
-                        if (neighbors >= 3 && chosen >= 0)
+
+                        if (neighbors >= 4 && chosen >= 0)
                         {
                             color[index] = original[chosen];
                             depth[index] = originalDepth[chosen];
@@ -221,6 +239,7 @@ namespace CurveThumb
                 BitmapData bits = high.LockBits(new Rectangle(0, 0, size, size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
                 try { Marshal.Copy(color, 0, bits.Scan0, color.Length); }
                 finally { high.UnlockBits(bits); }
+
                 Bitmap result;
                 if (outputSize == size) result = high;
                 else
@@ -233,6 +252,7 @@ namespace CurveThumb
                     }
                     high.Dispose();
                 }
+
                 using (Graphics graphics = Graphics.FromImage(result))
                 using (Font font = new Font("Segoe UI", Math.Max(8, outputSize * .075f), FontStyle.Bold, GraphicsUnit.Pixel))
                 {
@@ -240,6 +260,7 @@ namespace CurveThumb
                     RectangleF box = new RectangleF(outputSize - measure.Width - outputSize * .11f,
                         outputSize - measure.Height - outputSize * .1f,
                         measure.Width + outputSize * .06f, measure.Height + outputSize * .045f);
+
                     using (Brush backgroundBrush = new SolidBrush(Color.FromArgb(238, 249, 115, 22)))
                         graphics.FillRoundedRectangle(backgroundBrush, box, outputSize * .025f);
                     using (Brush foreground = new SolidBrush(Color.FromArgb(255, 33, 25, 18)))
