@@ -14,9 +14,10 @@ namespace CurveThumb
     {
         private const int BatchTriangles = 4096;
         private const uint FullSurfaceLimit = 250000;
-        private const int BoundsBlocks = 192;
-        private const int PreviewBlocks = 768;
-        private const int PreviewBlockTriangles = 128;
+        private const int BoundsBlocks = 8;
+        private const int BoundsBlockTriangles = 256;
+        private const int PreviewBlocks = 12;
+        private const int PreviewBlockTriangles = 3072;
 
         public static Bitmap Render(IStream stream, uint count, int size)
         {
@@ -24,7 +25,7 @@ namespace CurveThumb
 
             bool approximate = count > FullSurfaceLimit;
             Bounds bounds = new Bounds();
-            Visit(stream, count, approximate, BoundsBlocks, delegate(Tri tri) { bounds.Add(tri); });
+            Visit(stream, count, approximate, BoundsBlocks, BoundsBlockTriangles, delegate(Tri tri) { bounds.Add(tri); });
             if (!bounds.Valid) throw new InvalidDataException("STL has no finite geometry");
 
             // Explorer usually asks for 96-256 px thumbnails. Oversampling 2x is
@@ -34,18 +35,18 @@ namespace CurveThumb
                 : Math.Min(512, Math.Max(128, size * 2));
 
             Canvas canvas = new Canvas(oversample, bounds);
-            Visit(stream, count, approximate, PreviewBlocks, delegate(Tri tri) { canvas.Draw(tri); });
+            Visit(stream, count, approximate, PreviewBlocks, PreviewBlockTriangles, delegate(Tri tri) { canvas.Draw(tri); });
 
             // Bounded sampling can leave tiny pinholes. Fill only local holes so
             // separated parts are not accidentally welded together.
-            if (approximate) canvas.FillSmallGaps(7);
+            if (approximate) canvas.FillSmallGaps(8);
             return canvas.Finish(size);
         }
 
-        private static void Visit(IStream stream, uint count, bool approximate, int previewBlocks, Action<Tri> visitor)
+        private static void Visit(IStream stream, uint count, bool approximate, int previewBlocks, int blockTriangles, Action<Tri> visitor)
         {
             IntPtr pointer = Marshal.AllocHGlobal(4);
-            byte[] block = new byte[BatchTriangles * 50];
+            byte[] block = new byte[Math.Max(BatchTriangles, blockTriangles) * 50];
             try
             {
                 if (!approximate)
@@ -60,14 +61,14 @@ namespace CurveThumb
                     return;
                 }
 
-                long availableBlocks = (long)Math.Ceiling(count / (double)PreviewBlockTriangles);
+                long availableBlocks = (long)Math.Ceiling(count / (double)blockTriangles);
                 long blockCount = Math.Min(previewBlocks, availableBlocks);
 
                 for (long b = 0; b < blockCount; b++)
                 {
-                    long maxStart = Math.Max(0L, (long)count - PreviewBlockTriangles);
+                    long maxStart = Math.Max(0L, (long)count - blockTriangles);
                     long index = blockCount <= 1 ? 0 : b * maxStart / (blockCount - 1);
-                    int n = (int)Math.Min((long)PreviewBlockTriangles, (long)count - index);
+                    int n = (int)Math.Min((long)blockTriangles, (long)count - index);
 
                     stream.Seek(84 + index * 50, 0, IntPtr.Zero);
                     if (ReadFully(stream, block, n * 50, pointer) != n * 50) throw new EndOfStreamException();
