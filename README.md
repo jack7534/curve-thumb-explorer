@@ -54,6 +54,8 @@ Open **Windows Settings → Apps → Installed apps**, find **CurveThumb Explore
 - Small binary STL meshes render at full surface fidelity.
 - Dense STL meshes switch to a bounded preview path after 250,000 triangles.
 - Large-model preview work is capped to sampled blocks instead of scaling with every triangle in the file.
+- The large-STL path also limits random seek count, which matters on Google Drive, network mounts, and slower external disks.
+- Example benchmark on the development machine: a 1.28 GiB binary STL on a mounted Google Drive path generated a 256 px thumbnail in about 247 ms total. Hardware, storage, and model layout will vary.
 - Large previews use a lower internal oversampling target because Explorer thumbnails are typically only 96–256 px.
 - The renderer fills only small local gaps, helping sampled previews remain visually solid without welding separated parts together.
 
