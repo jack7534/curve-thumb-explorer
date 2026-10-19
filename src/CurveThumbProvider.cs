@@ -12,7 +12,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
- [assembly: AssemblyVersion("1.2.0.0")]
+ [assembly: AssemblyVersion("1.2.1.0")]
 
 namespace CurveThumb
 {
@@ -31,7 +31,7 @@ namespace CurveThumb
     public enum WTS_ALPHATYPE { WTSAT_UNKNOWN = 0, WTSAT_RGB = 1, WTSAT_ARGB = 2 }
     public enum STGM { Read = 0, Write = 1, ReadWrite = 2 }
 
-    [ComVisible(true), Guid("7D4E4693-E78B-4D59-AAC7-6B7B2B2B8F10"), ClassInterface(ClassInterfaceType.None), ProgId("CurveThumb.ShellThumbnailProvider")]
+    [ComVisible(true), Guid("F22C8013-265B-4F6C-9669-8FA59F8EA6D0"), ClassInterface(ClassInterfaceType.None), ProgId("CurveThumb.ShellThumbnailProvider")]
     public sealed class ShellThumbnailProvider : IThumbnailProvider, IInitializeWithStream
     {
         private byte[] data;
@@ -234,4 +234,3 @@ namespace CurveThumb
         public static void FillRoundedRectangle(this Graphics g,Brush b,RectangleF r,float radius){using(GraphicsPath p=new GraphicsPath()){float d=radius*2;p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();g.FillPath(b,p);}}
     }
 }
-

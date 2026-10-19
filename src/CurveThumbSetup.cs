@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -11,10 +12,11 @@ using Microsoft.Win32;
 
 internal static class CurveThumbSetup
 {
-    private const string Clsid = "{7D4E4693-E78B-4D59-AAC7-6B7B2B2B8F10}";
+    private const string Clsid = "{F22C8013-265B-4F6C-9669-8FA59F8EA6D0}";
+    private const string LegacyClsid = "{7D4E4693-E78B-4D59-AAC7-6B7B2B2B8F10}";
     private const string ThumbShell = "{E357FCCD-A995-4576-B01F-234630154E96}";
     private const string ProgId = "CurveThumb.ShellThumbnailProvider";
-    private const string Version = "1.2.0.0";
+    private const string Version = "1.2.1.0";
     private static readonly string[] Extensions = { ".stl", ".obj", ".3mf", ".ply", ".fbx" };
 
     [DllImport("shell32.dll")]
@@ -110,6 +112,19 @@ internal static class CurveThumbSetup
                     key.SetValue("CodeBase", codeBase);
                 }
             }
+            // .NET COM registration stores a subkey per assembly version.
+            // Leaving older versions under the same CLSID can let Shell
+            // surrogates activate a stale renderer after an upgrade.
+            using (RegistryKey inproc = machine.OpenSubKey(root + @"\InprocServer32", true))
+            {
+                foreach (string subkey in inproc.GetSubKeyNames())
+                {
+                    System.Version parsed;
+                    if (!string.Equals(subkey, Version, StringComparison.OrdinalIgnoreCase) &&
+                        System.Version.TryParse(subkey, out parsed))
+                        inproc.DeleteSubKeyTree(subkey, false);
+                }
+            }
             using (RegistryKey key = machine.CreateSubKey(root + @"\ProgId")) key.SetValue("", ProgId);
             using (RegistryKey key = machine.CreateSubKey(root + @"\Implemented Categories\{62C8FE65-4EBB-45E7-B440-6E39B2CDBF29}")) { }
             using (RegistryKey key = machine.CreateSubKey(@"SOFTWARE\Classes\" + ProgId + @"\CLSID")) key.SetValue("", Clsid);
@@ -122,7 +137,9 @@ internal static class CurveThumbSetup
                 using (RegistryKey saved = machine.OpenSubKey(backup, false))
                 {
                     string previous = old == null ? null : old.GetValue("") as string;
-                    if (saved == null && !string.IsNullOrEmpty(previous) && !string.Equals(previous, Clsid, StringComparison.OrdinalIgnoreCase))
+                    if (saved == null && !string.IsNullOrEmpty(previous) &&
+                        !string.Equals(previous, Clsid, StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(previous, LegacyClsid, StringComparison.OrdinalIgnoreCase))
                         using (RegistryKey write = machine.CreateSubKey(backup)) write.SetValue("PreviousCLSID", previous);
                 }
                 using (RegistryKey key = machine.CreateSubKey(association)) key.SetValue("", Clsid);
@@ -130,13 +147,14 @@ internal static class CurveThumbSetup
             using (RegistryKey key = machine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CurveThumbExplorer"))
             {
                 key.SetValue("DisplayName", "CurveThumb Explorer");
-                key.SetValue("DisplayVersion", "1.2.0");
+                key.SetValue("DisplayVersion", "1.2.1");
                 key.SetValue("Publisher", "CurveThumb Explorer");
                 key.SetValue("InstallLocation", directory);
                 key.SetValue("UninstallString", "\"" + setup + "\" /uninstall");
                 key.SetValue("NoModify", 1, RegistryValueKind.DWord);
                 key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
             }
+            machine.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\" + LegacyClsid, false);
         }
         using (RegistryKey user = User)
         {
@@ -145,10 +163,13 @@ internal static class CurveThumbSetup
                 string association = @"SOFTWARE\Classes\" + ext + @"\ShellEx\" + ThumbShell;
                 bool remove;
                 using (RegistryKey key = user.OpenSubKey(association, false))
-                    remove = key != null && string.Equals(key.GetValue("") as string, Clsid, StringComparison.OrdinalIgnoreCase);
+                    remove = key != null &&
+                        (string.Equals(key.GetValue("") as string, Clsid, StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(key.GetValue("") as string, LegacyClsid, StringComparison.OrdinalIgnoreCase));
                 if (remove) user.DeleteSubKey(association, false);
             }
             user.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\" + Clsid, false);
+            user.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\" + LegacyClsid, false);
             user.DeleteSubKeyTree(@"SOFTWARE\Classes\" + ProgId, false);
         }
         activeDll = dll;
@@ -172,6 +193,10 @@ internal static class CurveThumbSetup
                 catch { }
             }
         }
+        // Explorer does not own all thumbnail state. Windows keeps the
+        // thumbnail COM surrogate alive after Explorer exits; that process
+        // can continue serving old rendered images from its loaded assembly.
+        StopThumbnailSurrogate(currentSession);
         int removed = 0;
         try
         {
@@ -198,6 +223,38 @@ internal static class CurveThumbSetup
             }
         }
         return removed;
+    }
+
+    private static void StopThumbnailSurrogate(int currentSession)
+    {
+        const string thumbnailHost = "{AB8902B4-09CA-4BB6-B78D-A8F59079A8D5}";
+        try
+        {
+            using (ManagementObjectSearcher search = new ManagementObjectSearcher(
+                "SELECT ProcessId, SessionId, CommandLine FROM Win32_Process WHERE Name = 'dllhost.exe'"))
+            using (ManagementObjectCollection processes = search.Get())
+            {
+                foreach (ManagementObject entry in processes)
+                using (entry)
+                {
+                    string command = entry["CommandLine"] as string;
+                    if (command == null || command.IndexOf(thumbnailHost, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+                    if (Convert.ToInt32(entry["SessionId"]) != currentSession) continue;
+                    int id = Convert.ToInt32(entry["ProcessId"]);
+                    try
+                    {
+                        using (Process process = Process.GetProcessById(id))
+                        { process.Kill(); process.WaitForExit(5000); }
+                    }
+                    catch (ArgumentException) { }
+                    catch (System.ComponentModel.Win32Exception) { }
+                }
+            }
+        }
+        catch (ManagementException) { }
+        catch (UnauthorizedAccessException) { }
+        catch (System.Runtime.InteropServices.COMException) { }
     }
 
     private static void CleanupOldInstallFiles(string activeDll, string activeSetup)
@@ -239,6 +296,7 @@ internal static class CurveThumbSetup
                 if (remove) machine.DeleteSubKey(association, false);
             }
             machine.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\" + Clsid, false);
+            machine.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\" + LegacyClsid, false);
             machine.DeleteSubKeyTree(@"SOFTWARE\Classes\" + ProgId, false);
             machine.DeleteSubKeyTree(@"SOFTWARE\CurveThumb\PreviousHandlers", false);
             machine.DeleteSubKeyTree(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CurveThumbExplorer", false);
@@ -250,4 +308,3 @@ internal static class CurveThumbSetup
             try { File.Delete(dll); } catch (IOException) { }
     }
 }
-

@@ -4,7 +4,7 @@
 
 ## Install and view thumbnails
 
-1. Download [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.2.0/CurveThumb.Setup.exe) from [GitHub Releases](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.2.0) and double-click it.
+1. Download [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.2.1/CurveThumb.Setup.exe) from [GitHub Releases](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.2.1) and double-click it.
 2. Approve the Windows administrator prompt.
 3. Close and reopen the folder in File Explorer.
 4. Choose **View → Large icons** or **Extra large icons**.
@@ -13,7 +13,7 @@ Supported files: `.stl`, `.obj`, `.3mf`, ASCII `.ply`, and ASCII `.fbx`. A small
 
 ## If you still see a generic icon
 
-- Binary STL files up to roughly 5 million triangles render every face. Larger STL files use a bounded preview for speed. Other formats are limited to 128 MiB.
+- Binary STL files up to 30 million triangles render every face. The first preview of a file above 1 GiB can take about 20 seconds; later views use the Windows thumbnail cache. Larger STL files use a bounded preview. Other formats are limited to 128 MiB.
 - PLY and FBX must use the ASCII variant. Binary PLY and binary FBX are not supported yet.
 - Re-run the latest installer to clear an older cached thumbnail automatically, then reopen the folder. The first visit may be slower while Windows rebuilds previews.
 - Another thumbnail extension may already handle the same format. Uninstalling CurveThumb restores a machine-wide handler saved during installation.
@@ -26,4 +26,3 @@ Use **Settings → Apps → Installed apps → CurveThumb Explorer → Uninstall
 ## Privacy
 
 Parsing and rendering happen on your computer. CurveThumb does not connect to the internet, upload model files, or collect usage data.
-

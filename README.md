@@ -18,7 +18,7 @@ The built-in thumbnail provider currently supports binary and ASCII STL, OBJ, 3M
 
 ## Install in three steps
 
-1. **Download:** [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.2.0/CurveThumb.Setup.exe) from the [v1.2.0 release](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.2.0). The ZIP package is also available there for offline sharing.
+1. **Download:** [CurveThumb.Setup.exe](https://github.com/jack7534/curve-thumb-explorer/releases/download/v1.2.1/CurveThumb.Setup.exe) from the [v1.2.1 release](https://github.com/jack7534/curve-thumb-explorer/releases/tag/v1.2.1). The ZIP package is also available there for offline sharing.
 2. **Install:** Double-click the EXE and approve the Windows administrator prompt. Wait for the “CurveThumb Explorer is installed” message.
 3. **View:** Close and reopen File Explorer. Open a folder with models and choose **View → Large icons** or **Extra large icons**.
 
@@ -35,7 +35,7 @@ Windows SmartScreen may show an unknown publisher notice for a new free and open
 - Confirm you selected **Large icons** or **Extra large icons**, then reopen the folder.
 - For cloud-only files, choose **Available offline** so Windows can read the model data.
 - Re-run the latest installer to refresh old thumbnails. Setup clears Windows' thumbnail cache once and reopens File Explorer; the first visit to a folder may take longer while previews rebuild.
-- Binary STL files up to roughly 5 million triangles render every face. Larger STL files use a bounded preview with nearby gaps filled for a faster, more continuous thumbnail. Other supported formats must be at most 128 MiB.
+- Binary STL files up to 30 million triangles render every face, including dense exports above 1 GiB. Initial thumbnail generation for these files can take about 20 seconds; Windows caches the result. Larger STL files use a bounded preview. Other supported formats must be at most 128 MiB.
 
 ## Uninstall
 
@@ -56,4 +56,3 @@ Run `build.ps1` on Windows with the .NET Framework 4.x compiler available. The s
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
-

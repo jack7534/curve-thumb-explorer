@@ -13,8 +13,11 @@ namespace CurveThumb
     internal static class StlRasterizer
     {
         private const int BatchTriangles = 4096;
-        private const uint FullSurfaceLimit = 5000000;
-        private const int PreviewBlocks = 1024;
+        // Dense ZBrush parts can exceed a gigabyte. Sampled faces make otherwise
+        // continuous surfaces porous, so rasterize every face through 30M triangles.
+        private const uint FullSurfaceLimit = 30000000;
+        private const int BoundsBlocks = 1024;
+        private const int PreviewBlocks = 4096;
         private const int PreviewBlockTriangles = 512;
 
         public static Bitmap Render(IStream stream, uint count, int size)
@@ -22,16 +25,16 @@ namespace CurveThumb
             if (count == 0) throw new InvalidDataException("Empty STL");
             bool approximate = count > FullSurfaceLimit;
             Bounds bounds = new Bounds();
-            Visit(stream, count, approximate, delegate(Tri tri) { bounds.Add(tri); });
+            Visit(stream, count, approximate, BoundsBlocks, delegate(Tri tri) { bounds.Add(tri); });
             if (!bounds.Valid) throw new InvalidDataException("STL has no finite geometry");
             int resolution = Math.Min(512, Math.Max(128, size * 2));
             Canvas canvas = new Canvas(resolution, bounds);
-            Visit(stream, count, approximate, delegate(Tri tri) { canvas.Draw(tri); });
+            Visit(stream, count, approximate, PreviewBlocks, delegate(Tri tri) { canvas.Draw(tri); });
             if (approximate) canvas.FillSmallGaps(5);
             return canvas.Finish(size);
         }
 
-        private static void Visit(IStream stream, uint count, bool approximate, Action<Tri> visitor)
+        private static void Visit(IStream stream, uint count, bool approximate, int previewBlocks, Action<Tri> visitor)
         {
             IntPtr pointer = Marshal.AllocHGlobal(4);
             byte[] block = new byte[BatchTriangles * 50];
@@ -49,7 +52,7 @@ namespace CurveThumb
                 }
                 else
                 {
-                    long blockCount = Math.Min(PreviewBlocks, (long)Math.Ceiling(count / (double)PreviewBlockTriangles));
+                    long blockCount = Math.Min(previewBlocks, (long)Math.Ceiling(count / (double)PreviewBlockTriangles));
                     for (long b = 0; b < blockCount; b++)
                     {
                         long index = blockCount == 1 ? 0 : b * (count - PreviewBlockTriangles) / (blockCount - 1);
@@ -255,4 +258,3 @@ namespace CurveThumb
         }
     }
 }
-

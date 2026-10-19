@@ -21,7 +21,7 @@ $setupSource = Join-Path $root 'src\CurveThumbSetup.cs'
 $manifest = Join-Path $root 'src\CurveThumbSetup.manifest'
 $setupOutput = Join-Path $outDir 'CurveThumb.Setup.exe'
 $setupLine = '/nologo /target:winexe /platform:x64 /optimize+ /out:"' + $setupOutput + '" ' +
-    '/reference:System.Windows.Forms.dll /resource:"' + $output + '",CurveThumb.Provider.dll ' +
+    '/reference:System.Windows.Forms.dll /reference:System.Management.dll /resource:"' + $output + '",CurveThumb.Provider.dll ' +
     '/win32manifest:"' + $manifest + '" "' + $setupSource + '"'
 $setupProcess = Start-Process -FilePath $compiler -ArgumentList $setupLine -Wait -PassThru -NoNewWindow
 if ($setupProcess.ExitCode -ne 0) { throw "Setup compilation failed with exit code $($setupProcess.ExitCode)." }
@@ -38,4 +38,3 @@ $checksums = @(
 )
 Set-Content -LiteralPath (Join-Path $outDir 'SHA256SUMS.txt') -Value $checksums -Encoding ascii
 Write-Host "Build complete: $package"
-
