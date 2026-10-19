@@ -35,7 +35,7 @@ Windows SmartScreen may show an unknown publisher notice for a new free and open
 - Confirm you selected **Large icons** or **Extra large icons**, then reopen the folder.
 - For cloud-only files, choose **Available offline** so Windows can read the model data.
 - Re-run the latest installer to refresh old thumbnails. Setup clears Windows' thumbnail cache once and reopens File Explorer; the first visit to a folder may take longer while previews rebuild.
-- Binary STL files up to 30 million triangles render every face, including dense exports above 1 GiB. Initial thumbnail generation for these files can take about 20 seconds; Windows caches the result. Larger STL files use a bounded preview. Other supported formats must be at most 128 MiB.
+- Binary STL now uses a bounded preview for dense meshes. Small models still render every face, while larger files sample a fixed number of spatial blocks so thumbnail work no longer grows linearly with file size. This is designed for large ZBrush and scan exports where Explorer only needs a fast visual identifier. Other supported formats must be at most 128 MiB.
 
 ## Uninstall
 
@@ -47,7 +47,17 @@ Open **Windows Settings → Apps → Installed apps**, find **CurveThumb Explore
 - Setup registers the thumbnail handler for this computer. The default app associated with `.stl`, `.obj`, and other model files is not changed.
 - Requires 64-bit Windows and administrator approval during installation. Thumbnail rendering runs in Windows' isolated Shell process.
 - Only the formats listed above are registered. Unsupported formats remain under Windows or other installed thumbnail providers.
-- Large models can take longer to preview. Windows keeps thumbnails in its shared cache, rather than creating a separate image file beside each model. Setup clears the old cache on installation or upgrade. To refresh it later, run the installed `CurveThumb.Setup.*.exe /refresh-cache` as administrator. This refreshes thumbnails for all file types in the current Windows account; previews rebuild as folders are opened.
+- Large binary STL files use a bounded, low-overhead preview path instead of rasterizing every triangle. Windows keeps thumbnails in its shared cache, rather than creating a separate image file beside each model. Setup clears the old cache on installation or upgrade. To refresh it later, run the installed `CurveThumb.Setup.*.exe /refresh-cache` as administrator. This refreshes thumbnails for all file types in the current Windows account; previews rebuild as folders are opened.
+
+## Performance notes
+
+- Small binary STL meshes render at full surface fidelity.
+- Dense STL meshes switch to a bounded preview path after 250,000 triangles.
+- Large-model preview work is capped to sampled blocks instead of scaling with every triangle in the file.
+- Large previews use a lower internal oversampling target because Explorer thumbnails are typically only 96–256 px.
+- The renderer fills only small local gaps, helping sampled previews remain visually solid without welding separated parts together.
+
+> The packaged GitHub Release remains v1.2.1 until the v1.3.0 build is validated and published. The `main` branch contains the new large-STL performance work.
 
 ## Build from source
 
